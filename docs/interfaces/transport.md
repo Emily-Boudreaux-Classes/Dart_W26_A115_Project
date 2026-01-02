@@ -49,7 +49,7 @@ There are some regions of stars stable to the Ledoux criterion but unstable to t
 these regions are undergoing semiconvection
 
 $$
-D_{semi}= \alpha_{sc}\frac{K}{C_{P}\rho}\frac{\nabla_{rad}-\nable_{ad}}{\nabla_{\mu}}
+D_{semi}= \alpha_{sc}\frac{K}{C_{P}\rho}\frac{\nabla_{rad}-\nabla_{ad}}{\nabla_{\mu}}
 $$
 
 Where $\alpha_{sc}$ is the semiconvective efficiency parameter (often roughly $\sim$0.01) and $K$ is the 
@@ -65,11 +65,11 @@ some mixing due to the difference in weights of different species. The criterion
 thermohaline mixing is
 
 $$
-\frac{\psi}{\delta}\nabla_{\mu} \leq \nabla_{rad} - \nabla_{ad} \leq 0
+\frac{\phi}{\delta}\nabla_{\mu} \leq \nabla_{rad} - \nabla_{ad} \leq 0
 $$
 
 $$
-D_{thermo} \propto -\alpha_{th}\frac{3K}{2\rho c_{P}}\frac{\frac{\psi}{\delta}\nabla_{\mu}}{\nabla_{ad} - \nabla_{rad}}
+D_{thermo} \propto -\alpha_{th}\frac{3K}{2\rho c_{P}}\frac{\frac{\phi}{\delta}\nabla_{\mu}}{\nabla_{ad} - \nabla_{rad}}
 $$
 
 ### Gravitational Settling
