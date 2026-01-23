@@ -15,4 +15,9 @@ Here we provide a breakdown of the naming schemes for branches, directories in t
     - `/models`
         - the actual model tables..?
 
+## Branch Naming schemes:
+ - `feat/MODULE` = Feature being added
+ - `test/MODULE` = Test being done in the first week 
+ - `debug/feat/MODULE1` = Debugging a feature
+
 
