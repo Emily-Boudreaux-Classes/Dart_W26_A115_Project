@@ -20,9 +20,8 @@ def init_netIn(temp: float, rho: float, time: float, comp: Composition) -> NetIn
     netIn.composition = comp
     return netIn
 
-
 def burn(temp: float, rho: float, time: float):
-    C = init_composition() 
+    C = init_composition()
     netIns = []
     for T, R in zip(temp, rho):
         netIns.append(init_netIn(T, R, time, C))
@@ -32,7 +31,14 @@ def burn(temp: float, rho: float, time: float):
     grid_solver = GridSolver(construct.engine, local_solver)
     solver_ctx = GridSolverContext(construct.scratch_blob)
     results = grid_solver.evaluate(solver_ctx, netIns)
- 
+    print(type(results[0]))
+    # output specific energy (ergs/g/s) pick mass to multiply to get total internal energy and mean molecular mass
+
+    #print(results[0].__dir__())
+    #print(results[0].composition.__dir__())
+    #print(results[0].composition.getMeanParticleMass())
+    #print(results[0].composition.getMolarAbundance)
+    
     energies = []
     molars = []
     for i,j in enumerate(results):
@@ -51,3 +57,13 @@ def burn(temp: float, rho: float, time: float):
     #plt.ylabel('Energy [erg/g]')
     #plt.savefig('../../output/plots/density-vs-energy.png')
 
+    # take results, energy will be one of them, specific neutrino loss will be another, will need to extract these, multiply by total mass of shell that's burning, then take the difference
+    # epsilon might be specific energy
+    # Calculate mean molecular mass, give to cassie b/c this changes the EOS
+    # maybe graph of energy generation, burning rate
+
+    # make a graph that shows energy generation as a function of temperature
+   
+temps = np.linspace(1.5e7, 2e7, 100)
+rhos = np.linspace(1.5e2, 1.5e2, 100) 
+print(burn(temps,rhos,1000))
