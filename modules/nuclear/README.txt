@@ -3,9 +3,10 @@ nuc_burn.py is the main script with only functions defined. the burn() function 
 you should import nuc_burn at the top of your script.
 - nuc_burn.burn() takes inputs of temp: float, rho: float, time: float, comp=None
 'temp', 'rho', and 'comp' should be arrays. 'time' is your time step in seconds. 
-burn() outputs the delta energy, mean molecular mass, and mass fraction results for your given time step.
+burn() outputs a list of NetOut structs that contain the results for each shell evolved over the time step.
+This includes delta energy, mean molecular mass, mass fraction, etc.
 * for the very first time step, leave 'comp' as none (it calls a function with an initial composition)
-* for the following time steps, update 'comp' with the previous 'mass_frac' burn() output
+* for the following time steps, update 'comp' with the previous mass fraction burn() output (see how to access below)
 
 To run burn() within a time stepping function without a bunch of stuff outputting to your terminal,
 use burn() within a script and call the script with:
@@ -16,9 +17,15 @@ Example usage:
 - For initial run
 temps = np.linspace(1.5e7, 2e7, 100)
 rhos = np.linspace(1.5e2, 1.5e2, 100)
-e, mu, mf = nuc_burn.burn(temps, rhos, 1000)
-- For following run
-e2, mu2, mf2 = nuc_burn.burn(newtemp, newrho, 1000, mf)
+results = nuc_burn.burn(temps, rhos, 1000)
+
+# To see the functions you can access within results:
+print(results[0].__dir__())
+# To access mass fraction from Composition object:
+print(results[0].composition.getMassFraction())
+
+- For following run:
+results2 = nuc_burn.burn(newtemp, newrho, 1000, newcomp)
 - and so on...
 -----------------------------------------------------------------------------------------------
 scratch.py has the same code as nuc_burn.py, but is where I played with stuff and left messy comments for myself. 
