@@ -5,9 +5,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from modules.timestep.timestep import dyn_timestep
-from modules.eos.eos_functions import *
-from modules.nuclear.nuc_burn import *
+from sixseven.timestep.timestep import dyn_timestep
+from sixseven.eos.eos_functions import *
+from sixseven.nuclear.nuc_burn import *
 
 def main():
     print("Working ... ")
