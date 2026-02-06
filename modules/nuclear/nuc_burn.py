@@ -49,15 +49,7 @@ def burn(temp: float, rho: float, time: float, comp=None):
     grid_solver = GridSolver(construct.engine, local_solver)
     solver_ctx = GridSolverContext(construct.scratch_blob)
     results = grid_solver.evaluate(solver_ctx, netIns)
- 
-    epsilon = []
-    mu = []
-    mass_frac = results[0].composition
 
-    for i,j in enumerate(results):
-        epsilon.append(j.energy)
-        mu.append(j.composition.getMeanParticleMass())
-
-    return epsilon, mu, mass_frac
+    return results
     
 
