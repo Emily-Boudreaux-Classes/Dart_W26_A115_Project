@@ -11,11 +11,15 @@ import logging
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
 from pathlib import Path
+from sixseven.nuclear import nuc_burn
 
+
+# Global Variables
 REPO_DIR = str(Path(__file__).resolve().parent.parent.parent)
-    
+CONSTANTS = {'G': 6.674e-8}   
 
-def kramer_opacity(rho, T):
+
+def kramer_opacity(rho, T, t, massFrac):
     '''
     Implementation of the Kramer opacity law. 
     
@@ -23,42 +27,68 @@ def kramer_opacity(rho, T):
     :param T: temperature (units: Kelvin)
 
     '''
+    # compute compositions
+    X, Y, Z = nuc_burn.getCanonicalComposition(massFrac)
 
-    return rho * T**(-7/2)
+    # compute the three opacities
+    bf = (4.34e25) * (1 + X) * Z * rho * (T**(-7/2))
+    ff = (3.68e22) * (1 - Z) * (1 + X) * rho * (T**(-7/2))
+    ts = 0.3 * (1 + X)
+
+    # sum all opacity sources together
+    sum = bf + ff + ts
+    return sum
 
 def plot_kramer_sun(filename,delRho=10,delT=100, **kwargs):
     '''
     Plot the Kramer opacity for the Sun at various densities and temperatures
     
-    :param rho: density in g cm^-3
-    :param T: temperature in K
     :param filename: filename for the plot
     :param delRho: step size for densitiy
     :param delT: step size for temperature
     '''
     # let's go ahead and run tests for the sun
     # all of this info is coming from wikipedia
-    rhos = np.linspace(0.001, 150, delRho)
-    temps = np.linspace(5800, 15.7e6, delT)
+    temps = np.linspace(1.5e7, 2e7, 100)
+    rhos = np.linspace(1.5e2, 1.5e2, 100)
+    xx, yy = np.meshgrid(temps,rhos)
+    ar_shape = xx.shape
+    Time = 1000
+    e, mu, mf = nuc_burn.burn(xx.flatten(), yy.flatten(), Time)
 
-    _ = plt.figure(figsize=(10,10),dpi=500)
-
+    _ = plt.figure(figsize=(8,7),dpi=500)
     taus = []
-    for rho in rhos:
-        tau = kramer_opacity(rho,temps)
-        taus.append(tau)
-        plt.plot(temps, tau, label = f'$\\rho =${rho}')
+    #for rho in rhos:
+    #    tau = kramer_opacity(rho,temps,Time,mf)
+    #    taus.append(tau)
+    taus = kramer_opacity(xx.flatten(),yy.flatten(),Time,mf)
+
+    plt.contourf(xx.reshape(ar_shape), yy.reshape(ar_shape),taus.reshape(ar_shape))
+
     plt.xscale('log')
     plt.yscale('log')
-    plt.legend()
     
     plt.xlabel('Temperature (K)')
-    plt.ylabel('Opacity, $\tau$')
+    plt.ylabel('Density (g cm$^{-3}$)')
+    plt.colorbar(label='Opacity, $\\tau$')
 
     plt.savefig(filename)
 
     
+def Pfit(params_0):
 
+    # initial values for module
+
+    r = params_0['R']
+    T = params_0['T']
+    L = params_0['L']
+    X = params_0['X']
+    P = params_0['P']
+
+    # calculate Pfit
+
+    #g = CONSTANTS['G'] *
+    
 
 
 

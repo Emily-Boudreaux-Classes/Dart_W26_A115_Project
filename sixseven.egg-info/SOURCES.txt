@@ -1,0 +1,7 @@
+pyproject.toml
+sixseven/__init__.py
+sixseven.egg-info/PKG-INFO
+sixseven.egg-info/SOURCES.txt
+sixseven.egg-info/dependency_links.txt
+sixseven.egg-info/requires.txt
+sixseven.egg-info/top_level.txt
