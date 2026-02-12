@@ -1,24 +1,30 @@
 -----------------------------------------------------------------------------------------------
 nuc_burn.py is the main script with only functions defined. the burn() function is the only function you need from here. 
 you should import nuc_burn at the top of your script.
-- nuc_burn.burn() takes inputs of temp: float, rho: float, time: float, comp=None
-'temp', 'rho', and 'comp' should be arrays. 'time' is your time step in seconds. 
-burn() outputs a list of NetOut structs that contain the results for each shell evolved over the time step.
-This includes delta energy, mean molecular mass, mass fraction, etc.
+- nuc_burn.burn() takes inputs of temp: float, rho: float, time: float, comps=None
+# 'temps', 'rhos', and 'comps' should be arrays (number of elements = number of shells (dms)). 'time' is your time step in seconds. 
+# burn() outputs a list of NetOut structs that contain the results for each shell evolved over the time step.
+# This includes energy, Composition object, etc.
 
-************ If you want to access epsilon/mean molecular weight for all of the shells , here is the code to do so: *************
+************ If you want to access epsilon/mean molecular weight/Composition object for all of the shells , here is a code to do so: *************
 
 epsilon = []
 mu = []
+composition = [] # Composition object per shell
 
 for i,j in enumerate(results):
     epsilon.append(j.energy)
     mu.append(j.composition.getMeanParticleMass()) 
+    composition.append(j.composition) 
+return epsilon, mu, composition
 
 Important note:
-* for the very first time step, leave 'comp' as none (it calls a function with an initial composition) (default of comp is None, so you can leave it blank)
-* for the following time steps, update 'comp' with the previous mass fraction burn() output (see how to access below)
+# for the very first time step, leave 'comps' as none (it calls a function with an initial composition) (default of comps is None, so you can leave it blank)
+# for the following time steps, update 'comps' with the previous burn() output mass fractions per shell 
  
+
+ # The Composition object for each shell contains functions that access the mass fraction, mean molecular weight, etc. 
+
 *************************************** Example usage ***************************************** 
 - For initial run
 temps = np.linspace(1.5e7, 2e7, 100)
@@ -26,7 +32,7 @@ rhos = np.linspace(1.5e2, 1.5e2, 100)
 results = nuc_burn.burn(temps, rhos, 1000)
 
 - For following run:
-results2 = nuc_burn.burn(newtemp, newrho, 1000, newcomp)
+results2 = nuc_burn.burn(newtemps, newrhos, 1000, newcomps)
 - and so on...
 
 ********** To see the functions/properties you can access within results: **********
@@ -41,9 +47,9 @@ The output and their definitions:
  'specific_neutrino_energy_loss' - total specific energy lost to neutrinos while evolving to tMax
 
 # To access mass fraction from Composition object:
-print(results[0].composition) # this is the mass fraction after evolving the entire star, so there is only one index you need to access this. 
+print(results[0].composition) # this is the Composition object for the first shell of the star, to access them for each shell, see the code prior to the example usage code above. 
 
-# To see what functions an object like composition has:
+# To see what functions an object like Composition has:
 print(results.composition.__dir__())
 
 # To access epsilon for the first shell: 
@@ -57,4 +63,4 @@ python myscript.py > stdout 2>&1
 scratch.py has the same code as nuc_burn.py, but is where I played with stuff and left messy comments for myself. 
 this code can be run + altered if needed for trouble-shooting. it has arrays with dummy values defined for temp and rho at the end of the script, and a print statement.
 -----------------------------------------------------------------------------------------------
-test.py is simply testing the importing of nuc_burn and the functionality of burn() with dummy values for temp and rho.
+test.py is simply testing the importing of nuc_burn and the functionality of burn() with dummy values for temps and rhos.
