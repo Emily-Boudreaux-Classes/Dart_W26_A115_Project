@@ -1,10 +1,10 @@
 import numpy as np
 
 # Cassie EOS
-from modules.eos import eos_functions
+from sixseven.eos import eos_functions
 
 # Sasha nuclear
-from modules.nuclear import nuc_burn
+from sixseven.nuclear import nuc_burn
 
 print("FILE LOADED")
 

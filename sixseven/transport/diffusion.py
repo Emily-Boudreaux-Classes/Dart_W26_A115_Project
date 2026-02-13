@@ -1,9 +1,9 @@
 from fipy import Grid1D, CellVariable
 import numpy as np
 
-from modules.transport.transport import transport_step
-from modules.nuclear import nuc_burn
-from modules.eos import eos_functions
+from sixseven.transport.transport import transport_step
+from sixseven.nuclear import nuc_burn
+from sixseven.eos import eos_functions
 
 # -----------------------------
 # Grid setup
