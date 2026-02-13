@@ -22,11 +22,12 @@ def init_netIn(temp: float, rho: float, time: float, comp: Composition) -> NetIn
     return netIn
 
 
-def burn(temp: float, rho: float, time: float):
-    
-    C = init_composition()
+def burn(temps: float, rhos: float, time: float, comps=None):
+    if comps is None:
+        comps = [init_composition()] * len(temps) # initializes into a list
+
     netIns = []
-    for T, R in zip(temp, rho):
+    for T, R, C in zip(temps, rhos, comps):
         netIns.append(init_netIn(T, R, time, C))
     policy = MainSequencePolicy(C)
     construct = policy.construct()
@@ -36,21 +37,22 @@ def burn(temp: float, rho: float, time: float):
     results = grid_solver.evaluate(solver_ctx, netIns)
     #print(type(results[0]))
     # output specific energy (ergs/g/s) pick mass to multiply to get total internal energy and mean molecular mass
-
-    #print(results[0].__dir__())
-    #print(results[0].composition)
-    #print(results[0].composition.getMassFraction())
-    #print(results[0].composition.__dir__())
     
-    energies = []
-    molars = []
-    mass_frac = results[0].composition
+    epsilon = []
+    mu = []
+    composition = [] # Composition object per shell
 
     for i,j in enumerate(results):
-        energies.append(j.energy)
-        molars.append(j.composition.getMeanParticleMass())
+        epsilon.append(j.energy)
+        mu.append(j.composition.getMeanParticleMass()) 
+        composition.append(j.composition)
+    return epsilon, mu, composition
 
-    return energies, molars, mass_frac
+
+    #print(results[0].composition.getMassFraction())
+    #print(results[0].composition.getMeanParticleMass())
+    #print(results[0].__dir__())
+    #return results
 
     
     #plt.plot(temps,energies)
@@ -72,5 +74,6 @@ def burn(temp: float, rho: float, time: float):
    
 temps = np.linspace(1.5e7, 2e7, 100)
 rhos = np.linspace(1.5e2, 1.5e2, 100) 
-print(burn(temps,rhos,1000))
+ep, mu, comp = burn(temps,rhos,1000)
+print(comp)
 
