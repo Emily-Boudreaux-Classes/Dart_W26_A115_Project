@@ -16,14 +16,13 @@ for i,j in enumerate(results):
     epsilon.append(j.energy)
     mu.append(j.composition.getMeanParticleMass()) 
     composition.append(j.composition) 
-return epsilon, mu, composition
 
 Important note:
 # for the very first time step, leave 'comps' as none (it calls a function with an initial composition) (default of comps is None, so you can leave it blank)
 # for the following time steps, update 'comps' with the previous burn() output mass fractions per shell 
  
 
- # The Composition object for each shell contains functions that access the mass fraction, mean molecular weight, etc. 
+ # The Composition object for each shell contains functions that access the molar abundance, mean molecular weight, etc. 
 
 *************************************** Example usage ***************************************** 
 - For initial run
@@ -46,8 +45,8 @@ The output and their definitions:
  'specific_neutrino_flux' - total flux of neutrinos while evolving to tMax
  'specific_neutrino_energy_loss' - total specific energy lost to neutrinos while evolving to tMax
 
-# To access mass fraction from Composition object:
-print(results[0].composition) # this is the Composition object for the first shell of the star, to access them for each shell, see the code prior to the example usage code above. 
+# To access molar abundance from Composition object:
+print(results[0].composition.getMolarAbundance("H-1")) # this is the Composition object for the first shell of the star, to access them, you must iterate through each shell 
 
 # To see what functions an object like Composition has:
 print(results.composition.__dir__())

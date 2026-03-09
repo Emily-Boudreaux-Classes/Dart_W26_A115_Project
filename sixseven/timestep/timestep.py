@@ -1,7 +1,6 @@
 import numpy as np
-from scipy.integrate import odeint
 
-def dyn_timestep(X_i, dX_i, step, hfactor, min_step):
+def dyn_timestep(X_i, dX_i, step, hfactor=1e15, min_step=1e8):
     """
     dynamic timestep function, decides how long to step based on paramater change of previous step
     Decreases/increases time step if previous step is more than twice / less than half of the estimate
@@ -13,11 +12,11 @@ def dyn_timestep(X_i, dX_i, step, hfactor, min_step):
     min_step (float): minimum time step allowed during simulation
     """
     # finds mass element and property that change the most over a given step
-    ### impliemnt row,col when searching through multiple mass elements
+    ### use row,col when searching through multiple mass elements, use idx for single element
     idx = np.argmax(dX_i)
-    # row, col = np.unravel_index(idx, dX_i.shape)
-    dp = dX_i[idx]#[row, col]
-    p = X_i[idx]#[row, col]
+    row, col = np.unravel_index(idx, dX_i.shape)
+    dp = dX_i[row, col]#[idx]
+    p = X_i[row, col]#[idx]
     
     # estimated time step
     step_est = hfactor*np.sqrt(np.abs(p/dp))

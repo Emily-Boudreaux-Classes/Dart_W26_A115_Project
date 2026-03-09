@@ -39,6 +39,24 @@ def init_netIn(temp: float, rho: float, time: float, comp: Composition) -> NetIn
 # - For following run:
 # results2 = nuc_burn.burn(newtemps, newrhos, 1000, newcomps)
 # - and so on...
+def getCanonicalComposition(massFrac):
+    Hspec = ['H-1','H-2','H-3']
+    Hespec = ['He-3','He-4']
+
+    X = []
+    for H in Hspec:
+        X.append(massFrac.getMassFraction(H))
+
+    Y = []
+    for He in Hespec:
+        Y.append(massFrac.getMassFraction(He))
+
+    X = np.sum(X)
+    Y = np.sum(Y)
+
+    Z = 1 - (X+Y)
+    return X, Y, Z
+
 def burn(temps: float, rhos: float, time: float, comps=None):
     if comps is None:
         comps = [init_composition()] * len(temps) # initializes into a list
