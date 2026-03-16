@@ -1,4 +1,7 @@
 import numpy as np
+from fipy import Grid1D, CellVariable, FaceVariable, TransientTerm, DiffusionTerm
+from sixseven.transport.diffusion import A_face
+
 print("Hello! This is the transport module. It handles compositional transport via diffusion.")
 # DIFFUSION COEFFICIENTS
 def compute_diffusion_coefficients(structure,
@@ -150,14 +153,14 @@ def transport_step(comps, structure, dt,
         1. Computes diffusion coefficients from structure
         2. Applies diffusion update to composition (AKA gives out new composition)
 
-    It does NOT:
+    It does NOT (because Ben handles this in timestep):
         - call nuclear burning
         - compute temperature
         - compute density
         - update internal energy
 
     It ONLY modifies composition based on the current structure
-    and the specified diffusion physics because Ben handles the organization.
+    and the specified diffusion physics given to me.
 
     Parameters in here:
 
@@ -168,7 +171,7 @@ def transport_step(comps, structure, dt,
         Must contain:
             m, Hp, v_mlt, is_convective,
             grad_rad, grad_ad, grad_mu,
-            K, Cp, rho, T
+            K, Cp, rho, T, and r (from George)
 
     dt : float
         Timestep (seconds).
@@ -178,24 +181,40 @@ def transport_step(comps, structure, dt,
     X_new : ndarray
         Updated composition after one timestep.
     """
+    mesh = Grid1D(structure["dM"])
     symbols = ["H-1", "He-4", "C-12"]
+    Y = {}
     X = np.zeros(shape=(len(comps), len(symbols)))
     for i, comp in enumerate(comps):          
         for j, sym in enumerate(symbols):    
-            X[i, j] = comp.composition.getMolarAbundance(sym)          
+            X[i, j] = comp.composition.getMolarAbundance(sym)
+            Y[sym] = CellVariable(
+                mesh=mesh,
+                value=X[:, j],
+            )          
     # Compute total diffusion coefficient profile
     D = compute_diffusion_coefficients(
         structure,
         alpha_sc=alpha_sc,
         alpha_th=alpha_th
     )
+    D_cell = CellVariable(mesh=mesh, value=D)
+    rho_cell = CellVariable(mesh=mesh, value=structure["rho"])
+    r_cell= CellVariable(mesh=mesh, value=structure["r"])
 
-    # Apply explicit diffusion update
-    X_new = apply_diffusion(X, D, structure["m"], dt)
+    A_face = (4 * np.pi * r_cell.faceValue**2 * rho_cell.faceValue)**2 * D_cell.faceValue
+
+    eqs = {symbol: TransientTerm() == DiffusionTerm(coeff=A_face) for symbol in symbols}
+
+    for sym in symbols: 
+
+        Y[sym].updateOld()
+        eqs[sym].solve(var=Y[sym], dt=dt)
+
     
     new_comps = comps
     for shellID, comp in enumerate(comps):
         for j, sym in enumerate(symbols):
-            new_comps[shellID].composition.setMolarAbundance(sym, X_new[shellID, j])
+            new_comps[shellID].composition.setMolarAbundance(sym, Y[sym].value[shellID])
 
     return new_comps

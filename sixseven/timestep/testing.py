@@ -1,3 +1,4 @@
+# this is the file where integration has been happening - copy, edit, and/or add your own work in your version of this to test integration!
 # -----
 # run this file with the command "python -m sixseven.timestep.testing" in the project directory
 # -----
@@ -30,34 +31,26 @@ def main():
     step = 1e14 # initial step 
     max_t = 1e16 # total time
 
+    t = 0 # initial time
+    n = 0 # initial step counter
+
     N = 100 # number of mass elements tracked 
+    P = np.ones(N) * 1e17 # fixed value for now, roughly that of solar core, whatever
+
     u = np.empty((4,N)) # array of initial T, rho, eps, mu for each dM - shape: (4,N)
     T = np.ones(N) * 1e7 # burn requires arrays
     rho = np.ones(N) * 1e2
     dM = np.linspace(1e-5,1,N) * 1e32 # mass enclosed!
 
+    # specific heats for ideal gas - set in stone
+    add_index = ad_index(CONST.Cp_ideal,CONST.Cv_ideal)
+
     results = burn(temps=T,rhos=rho,time=1.,comps=None)
-
-    structure = {"m":dM, 
-                 "Hp":np.ones(N) * 1e9, 
-                 "v_mlt":np.ones(N)*1e5, # guess
-                 "is_convective":np.full(N, False, dtype=bool), 
-                 "grad_rad":np.ones(N) * 0.4, # guess
-                 "grad_ad":np.ones(N) * 0.3, # guess
-                 "grad_mu":np.ones(N) * 0.01, # guess
-                 "K":np.ones(N) * 1e7, # guess
-                 "Cp":np.ones(N) * 1e8, # guess
-                 "rho":rho,
-                 "T":T}
-    # we ball ?
-
-    # intital diffusion from aretemis
-    diff_results = transport_step(comps=results,structure=structure,dt=1.)
 
     eps = []
     mu = []
     mol_abund = []
-    for i,j in enumerate(diff_results):
+    for i,j in enumerate(results):
         eps.append(j.energy)
         mu.append(j.composition.getMeanParticleMass()) 
         mol_abund.append(j.composition)
@@ -65,14 +58,27 @@ def main():
     eps = np.array(eps)
     mu = np.array(mu)
     mol_abund = np.array(mol_abund)
+
+    Hp = (1.36e-16 * T) / (mu * 1.67e-24 * 2.74e4)
+    structure = {"m":dM, 
+                 "Hp":np.ones(N) * Hp, 
+                 "v_mlt":np.ones(N)*1e5, # guess
+                 "is_convective":np.full(N, True, dtype=bool), 
+                 "grad_rad":np.ones(N) * nabla_rad(P=P,T=T,dT_dP=np.gradient(T,P)), 
+                 "grad_ad":np.ones(N) * nabla_ad(add_index), 
+                 "grad_mu":np.ones(N) * 0.01, # guess
+                 "K":np.ones(N) * 1e7, # guess
+                 "Cp":np.ones(N) * CONST.Cp_ideal,
+                 "rho":rho,
+                 "T":T}
+    # we ball ?
+
+    # intital diffusion from aretemis
+    diff_results = transport_step(comps=results,structure=structure,dt=1.)
     
     u[0],u[1],u[2],u[3] = T,rho,eps,mu # initial conditions, after 1 sec
 
-    P = 1e17 # fixed value for now, roughly that of solar core
     U = init_U(mu=u[3],dM=dM,T=u[0])
-
-    t = 0 # initial time
-    n = 0 # initial step counter
 
     print("Running ... ")
 
@@ -87,47 +93,36 @@ def main():
 
         T,rho,eps,mu = u[0],u[1],u[2],u[3] # setting variables from array for readability 
 
-        half_step = step / 2 # run this twice over the loop
-        for i in range(2):
-            results = burn(temps=T,rhos=rho,time=half_step,comps=mol_abund) # sasha - nuc burning 
-            # print(results[0].composition.getMolarAbundance("H-1"))
-            # sys.exit()
-            Hp = (1.36e-16 * T) / (mu * 1.67e-24 * 2.74e4)
-            structure = {"m":dM, 
-                         "Hp":Hp, 
-                         "v_mlt":np.ones(N) * 1e5, # guess
-                         "is_convective":np.full(N, False, dtype=bool), 
-                         "grad_rad":np.ones(N) * 0.4, # guess
-                         "grad_ad":np.ones(N) * 0.3, # guess
-                         "grad_mu":np.ones(N) * 0.01, # guess
-                         "K":np.ones(N) * 1e7, # guess
-                         "Cp":np.ones(N) * 1e8, # guess
-                         "rho":rho,
-                         "T":T}
-            
-            # diffusion of species after burning
-            diff_results = transport_step(comps=results,structure=structure, dt= half_step) # artemis - simple diffusion
-            
-            # defining these here so they get updated each time w/i inner loop
-            eps = []
-            mu = [] 
-            mol_abund = []
-            for i,j in enumerate(diff_results):
-                eps.append(j.energy)
-                mu.append(j.composition.getMeanParticleMass()) 
-                mol_abund.append(j.composition)
+        results = burn(temps=T,rhos=rho,time=step,comps=mol_abund) # sasha - nuc burning 
 
-            eps = np.asarray(eps) # setting the lists as arrays
-            mu = np.asarray(mu)
-            mol_abund = np.array(mol_abund)
-
-            U = update_U(U,eps) # cassie - updates internal energy 
-            T = temperature_solver(dM=dM,mu=mu,U=U) # cassie - solves temperature
-            rho = simple_eos(P=P,mu=mu,T=T) # cassie - gets dens from ideal gas eos
-            print(T)
-            # make this derivatives instead of simple differences
-            du = np.array([T - u[0], rho - u[1], eps - u[2], mu - u[3]]) # change between steps
+        # only need to update these, the rest are set for now (guesses, constants, and ideal gas stuff)
+        Hp = (1.36e-16 * T) / (mu * 1.67e-24 * 2.74e4)
+        structure["Hp"] = Hp
+        structure["grad_rad"] = nabla_rad(P=P,T=T,dT_dP=np.gradient(T,P))
+        structure["rho"] = rho
+        structure["T"] = T
         
+        # diffusion of species after burning
+        diff_results = transport_step(comps=results,structure=structure, dt=step) # artemis - simple diffusion
+        
+        eps = []
+        mu = [] 
+        mol_abund = []
+        for i,j in enumerate(diff_results):
+            eps.append(j.energy)
+            mu.append(j.composition.getMeanParticleMass()) 
+            mol_abund.append(j.composition)
+
+        eps = np.asarray(eps) # setting the lists as arrays
+        mu = np.asarray(mu)
+        mol_abund = np.array(mol_abund)
+
+        U = update_U(U,eps) # cassie - updates internal energy 
+        T = temperature_solver(dM=dM,mu=mu,U=U) # cassie - solves temperature
+        rho = simple_eos(P=P,mu=mu,T=T) # cassie - gets dens from ideal gas eos
+
+        # make this derivatives instead of simple differences?
+        du = np.array([T - u[0], rho - u[1], eps - u[2], mu - u[3]]) # change between steps
         step, p, dp = dyn_timestep(u, du, step, hfactor=1e15, min_step=1e8) # calc timestep, p, dp
 
         sarr.append(step)

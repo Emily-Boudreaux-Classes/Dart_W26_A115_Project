@@ -37,6 +37,7 @@ dependencies = [
     "six==1.17.0",
     "wheel==0.45.1",
     "scipy==1.17.0",
+    "FiPy==4.0.1"
 ]
 
 [tool.setuptools]

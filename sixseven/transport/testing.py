@@ -10,19 +10,23 @@ from sixseven.transport.transport_simple import transport_step
 def main():
 
     n_shells = 100
-    dt = 1.0e14  # seconds 
+    dt = 1e5  # seconds 
 
     temps = np.linspace(1.5e7, 4e6, n_shells)
     density = np.linspace(160, 100, n_shells)
-    # ben bug fix here: this array represents mass enclosed within a given radius
-    # if the first element of this array is zero, then EoS breaks which makes burning break -> because the mass is zero! 
-    m = np.linspace(1e-5, 1, n_shells) * 1e32 # multipled by this by a total mass in grams 
+    m = np.linspace(0, 1, n_shells)
+    
+    dM = np.diff(m)[0] 
+    
+    radius = np.linspace(0, 7e10, n_shells) 
 
     structure = {
         "m": m,
-        "Hp": np.ones(n_shells) * 1e9,
-        "v_mlt": np.ones(n_shells) * 1e5,
-        "is_convective": np.zeros(n_shells, dtype=bool),
+        "dM": np.ones(n_shells) * dM,          
+        "r": radius,                          
+        "Hp": np.ones(n_shells) * 1e8,
+        "v_mlt": np.ones(n_shells) * 1e2,
+        "is_convective": np.ones(n_shells, dtype=bool),
         "grad_rad": np.ones(n_shells) * 0.4,
         "grad_ad": np.ones(n_shells) * 0.3,
         "grad_mu": np.ones(n_shells) * 0.01,
@@ -31,13 +35,21 @@ def main():
         "rho": density,
         "T": temps,
     }
-    results = burn(temps=temps, rhos=density, time=dt, comps=None)
+    
+    results = burn(temps=temps, rhos=density, time=3e12, comps=None)
 
     comps = results 
     X_new = transport_step(comps, structure, dt)
 
+    comps = results 
+    
+    old_H1 = comps[0].composition.getMolarAbundance("H-1")
+    
+    X_new = transport_step(comps, structure, dt)
 
-    print(X_new)
+    # Compare old vs new
+    print(f"Before: {old_H1}")
+    print(f"After:  {X_new[0].composition.getMolarAbundance('H-1')}")
 
 
 main()
