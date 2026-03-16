@@ -1,0 +1,6 @@
+name: dart_115_project
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+prefix: /opt/anaconda3/envs/dart_115_project

@@ -12,19 +12,19 @@ from scipy.optimize import minimize, brentq
 import matplotlib.pyplot as plt
 from sixseven.nuclear.nuc_burn import *
 from sixseven.timestep.timestep import dyn_timestep
+from sixseven.eos.eos_functions import *
 from sixseven.eos import eos_functions as ef 
-from sixseven.radiation.radiate import kramer_opacity
 
 # ----------------------------
 # Physical constants (cgs)
 # ----------------------------
 G = 6.67430e-8                 # gravitational constant [cm^3 g^-1 s^-2]
-a_rad = 4 * ef.CONST.sigma_sb / ef.CONST.c_s  # radiation density constant [erg cm^-3 K^-4]
-c_light = ef.CONST.c_s         # speed of light [cm s^-1]
-k_B = ef.CONST.kB              # Boltzmann [erg K^-1]
+a_rad = 7.5657e-15             # radiation density constant [erg cm^-3 K^-4]
+c_light = 2.99792458e10        # speed of light [cm s^-1]
+k_B = 1.380649e-16             # Boltzmann [erg K^-1]
 m_u = 1.66053906660e-24        # atomic mass unit [g]
-m_H = ef.CONST.mh              # hydrogen atom mass [g]
-sigma_SB = ef.CONST.sigma_sb   # Stefan-Boltzmann [erg cm^-2 s^-1 K^-4]
+m_H = 1.6735575e-24            # hydrogen atom mass [g]
+sigma_SB = 5.670374419e-5      # Stefan-Boltzmann [erg cm^-2 s^-1 K^-4]
 pi = math.pi
 M_sun = 1.98847e33
 # Nominal IAU 2015 "solar units" as exact conversion factors (converted to cgs)
@@ -32,22 +32,22 @@ R_SUN = 6.957e10          # cm
 L_SUN = 3.828e33          # erg / s
 T_EFF_SUN = 5772.0        # K
 mu = 1.004
-# Solar composition (char)
-X_SOLAR = 0.7381
-Y_SOLAR = 0.2485
-Z_SOLAR = 0.0134
+# Typical present-day solar center values (model-dependent, but widely used ballpark)
+P_C_SUN = 2.453e17        # dyn / cm^2
+#P_C_SUN = 2.453e25      # Test
+T_C_SUN = 1.559e7         # K
 
 # Photosphere ("surface") is definition-dependent; this is a rough characteristic value
 T_SURF_SUN = T_EFF_SUN    # K
 P_SURF_SUN = 3.0e4        # dyn / cm^2
 
 # Hardcoded mass grid parameters
-N_SHELLS  = 200                # total mass shells (log-spaced, centre to surface)
-N_BURN    = 170                # Reduced from 175 to ~inner 5% by mass to avoid luminosity overshoot
-BURN_TIME = 1e16  # 1e16        # burn() integration time [s]; output is erg/g over this interval
+N_SHELLS  = 100          # total mass shells (log-spaced, centre to surface)
+N_BURN    = 88           # first N_BURN shells burn (~inner 10% by mass with log spacing)
+BURN_TIME = 1e6  # 1e16        # burn() integration time [s]; output is erg/g over this interval
 
 
-def eos_rho(P, T, comp: Composition = None):
+def eos_rho(P, T, comp: Composition):
     """
     EOS: Ideal gas. Vectorized for array inputs.
     """
@@ -69,27 +69,26 @@ def energy_generation_eps(rho, T, comp: Composition):
     rho_arr = np.atleast_1d(rho)
     T_arr = np.atleast_1d(T)
     
-    # Suppress noisy KINSol output from burn() (both stdout and stderr)
-    stdout_fd = sys.stdout.fileno()
+    # Suppress noisy KINSol stderr output from burn()
     stderr_fd = sys.stderr.fileno()
-    saved_stdout = os.dup(stdout_fd)
     saved_stderr = os.dup(stderr_fd)
     devnull = os.open(os.devnull, os.O_WRONLY)
-    os.dup2(devnull, stdout_fd)
     os.dup2(devnull, stderr_fd)
     os.close(devnull)
     try:
         results = burn(temps=T_arr, rhos=rho_arr, time=BURN_TIME, comps=None)
     finally:
-        os.dup2(saved_stdout, stdout_fd)
         os.dup2(saved_stderr, stderr_fd)
-        os.close(saved_stdout)
         os.close(saved_stderr)
     
     # Extract energy, mu, and composition from the NetOut results
     eps = np.asarray([r.energy for r in results]) / BURN_TIME   # erg/g -> erg/g/s
     mu_burn = np.asarray([r.composition.getMeanParticleMass() for r in results])
     mass_frac = results[0].composition
+    
+    
+
+
     # If inputs were scalars, return scalar outputs
     if rho_is_scalar and T_is_scalar:
         eps = float(eps[0])
@@ -111,17 +110,17 @@ def get_eps_at_m(m, m_shells, eps_shells):
     return float(np.interp(m, m_shells, eps_shells))
 
 
-def stellar_structure_rhs_4eq(m, y, comp: Composition,
+def stellar_structure_rhs_4eq(m, y, comp: Composition, kappa=0.4,
+                               eps_nuc=0.0,
                                m_shells=None, eps_shells=None,
-                               use_convection=True, force_adiabatic=False,
-                               force_convective_core=True):
+                               use_convection=True):
     """
     4-equation stellar structure in log coordinates.
     y = [ln(r), ln(P), L, ln(T)]
-
+    
     If m_shells/eps_shells are provided, eps_nuc is interpolated from
     the shell array. Otherwise uses constant eps_nuc.
-
+    
     use_convection=True  -> Schwarzschild criterion (convective if nabla_rad > nabla_ad)
     use_convection=False -> purely radiative temperature gradient everywhere
     """
@@ -129,58 +128,45 @@ def stellar_structure_rhs_4eq(m, y, comp: Composition,
     r = np.exp(ln_r)
     P = np.exp(ln_P)
     T = np.exp(ln_T)
-
+    
+    # Adiabatic gradient for monatomic ideal gas: nabla_ad = 2/5
+    nabla_ad = 0.4
+    
     # Get density from EOS
     rho = eos_rho(P, T, comp)
-
-    # Dynamic opacity and adiabatic gradient from user libraries
-    kappa = kramer_opacity(rho, T, X_SOLAR, Y_SOLAR, Z_SOLAR)
-    try:
-        n_ad = ef.nabla_ad(P, T, mu) # or ef.ad_index
-        nabla_ad = n_ad if n_ad is not None else 0.4
-    except:
-        nabla_ad = 0.4
-
+    
     # 1) Mass conservation: d(ln r)/dm = 1 / (4π r³ ρ)
-    dln_r_dm = 1.0 / (4.0 * pi * (r+1e-5)**3 * (rho+1e-20))
-
+    dln_r_dm = 1.0 / (4.0 * pi * r**3 * rho)
+    
     # 2) Hydrostatic equilibrium: d(ln P)/dm = -G m / (4π r⁴ P)
-    dln_P_dm = -G * m / (4.0 * pi * (r+1e-5)**4 * (P+1e-5))
-
+    dln_P_dm = -G * m / (4.0 * pi * r**4 * P)
+    
     # 3) Energy generation: interpolated from shell values or constant
-    dL_dm = get_eps_at_m(m, m_shells, eps_shells) if m_shells is not None else 0.0
-
+    if m_shells is not None and eps_shells is not None:
+        dL_dm = get_eps_at_m(m, m_shells, eps_shells)
+    else:
+        dL_dm = eps_nuc
+    
     # 4) Temperature gradient with optional Schwarzschild criterion
     #    Radiative: d(ln T)/dm = -3 κ L / (64 π² a_rad c r⁴ T⁴)
-    #    Add small safety epsilon to denominators
-    denom_rad = (64.0 * pi**2 * a_rad * c_light * (r+1e-5)**4 * (T+1e-5)**4)
-    dln_T_dm_rad = -3.0 * kappa * L / denom_rad
-
-    # Force convective core for very small m to avoid isothermal core
-    # or if force_adiabatic is True
-    _is_central = (force_convective_core and m < 0.001 * M_sun)
+    dln_T_dm_rad = -3.0 * kappa * L / (64.0 * pi**2 * a_rad * c_light * r**4 * T**4)
     
-    if force_adiabatic or _is_central:
-        dln_T_dm = nabla_ad * dln_P_dm
-    elif use_convection and m > 0:
+    if use_convection and m > 0:
         # Schwarzschild criterion: nabla_rad = d ln T / d ln P (radiative)
-        denom_nabla = (16.0 * pi * a_rad * c_light * G * m * (T+1e-5)**4)
-        nabla_rad = (3.0 * kappa * L * P) / denom_nabla
+        # nabla_rad = 3 κ L P / (16 π a_rad c G m T⁴)
+        nabla_rad = (3.0 * kappa * L * P) / (16.0 * pi * a_rad * c_light * G * m * T**4)
         if nabla_rad > nabla_ad:
+            # Convective: d(ln T)/dm = nabla_ad * d(ln P)/dm
             dln_T_dm = nabla_ad * dln_P_dm
         else:
             dln_T_dm = dln_T_dm_rad
     else:
         dln_T_dm = dln_T_dm_rad
-
-    # Clamp outputs to prevent integration spirals
-    return [np.clip(dln_r_dm, -1e10, 1e10), 
-            np.clip(dln_P_dm, -1e10, 1e10), 
-            np.clip(dL_dm, -1e30, 1e30), 
-            np.clip(dln_T_dm, -1e10, 1e10)]
+    
+    return [dln_r_dm, dln_P_dm, dL_dm, dln_T_dm]
 
 
-def integrate_star_4eq(P_c, T_c, M, m_0, comp, 
+def integrate_star_4eq(P_c, T_c, M, m_0, comp, kappa=0.4,
                        use_convection=True, return_full=False):
     """
     Integrate 4-equation stellar structure from center to surface.
@@ -196,29 +182,19 @@ def integrate_star_4eq(P_c, T_c, M, m_0, comp,
     rho_c = eos_rho(P_c, T_c, comp)
     r_0 = (3 * m_0 / (4 * np.pi * rho_c))**(1/3)
     
-    # Get central eps to seed a realistic preliminary T-gradient
-    eps_c, _, _ = energy_generation_eps(rho_c, T_c, comp)
-    L_0_guess = eps_c * m_0
-
     # 1000 log-spaced shells from centre to surface
     m_shells = np.logspace(np.log10(m_0), np.log10(M), N_SHELLS)
     
-    # --- Preliminary integration (using eps_c) to get T, P at the burn shells ---
+    # --- Preliminary integration (eps=0) to get T, P at the burn shells ---
     m_burn_edge = m_shells[N_BURN - 1]
-    y0_pre = [np.log(r_0), np.log(P_c), L_0_guess, np.log(T_c)]
+    y0_pre = [np.log(r_0), np.log(P_c), 0.0, np.log(T_c)]
     
-    def ode_pre_wrapper(m, y):
-        # Using a constant eps_c for the seeding gradient calculation.
-        # This will set L(m) = eps_c * m.
-        # Force convective at the center to avoid flat T-profiles
-        return stellar_structure_rhs_4eq(m, y, comp, 
-                                          m_shells=np.array([m_0, M]), 
-                                          eps_shells=np.array([eps_c, eps_c]),
-                                          use_convection=use_convection,
-                                          force_adiabatic=False,
-                                          force_convective_core=True)
+    def ode_pre(m, y):
+        return stellar_structure_rhs_4eq(m, y, comp, kappa,
+                                          eps_nuc=0.0,
+                                          use_convection=use_convection)
     
-    sol_pre = solve_ivp(ode_pre_wrapper, [m_0, m_burn_edge], y0_pre, method='RK45',
+    sol_pre = solve_ivp(ode_pre, [m_0, m_burn_edge], y0_pre, method='RK45',
                         rtol=1e-8, atol=1e-10, dense_output=True)
     
     burn_m = m_shells[:N_BURN]
@@ -234,20 +210,15 @@ def integrate_star_4eq(P_c, T_c, M, m_0, comp,
     
     # --- Call burn() on the N_BURN innermost shells only ---
     try:
-        stdout_fd = sys.stdout.fileno()
         stderr_fd = sys.stderr.fileno()
-        saved_stdout = os.dup(stdout_fd)
         saved_stderr = os.dup(stderr_fd)
         devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, stdout_fd)
         os.dup2(devnull, stderr_fd)
         os.close(devnull)
         try:
             results = burn(temps=T_burn, rhos=rho_burn, time=BURN_TIME, comps=None)
         finally:
-            os.dup2(saved_stdout, stdout_fd)
             os.dup2(saved_stderr, stderr_fd)
-            os.close(saved_stdout)
             os.close(saved_stderr)
         
         # erg/g  ->  erg/g/s
@@ -268,7 +239,7 @@ def integrate_star_4eq(P_c, T_c, M, m_0, comp,
     y0 = [np.log(r_0), np.log(P_c), L_0, np.log(T_c)]
     
     def ode_wrapper(m, y):
-        return stellar_structure_rhs_4eq(m, y, comp,
+        return stellar_structure_rhs_4eq(m, y, comp, kappa,
                                          m_shells=m_shells,
                                          eps_shells=eps_shells,
                                          use_convection=use_convection)
@@ -290,6 +261,7 @@ def integrate_star_4eq(P_c, T_c, M, m_0, comp,
 
 def optimize_Pc_Tc_4eq(T_surf_target, P_surf_target, M, m_0, comp, 
                         P_c_guess=2.5e17, T_c_guess=1.5e7, 
+                        kappa=0.4,
                         use_convection=True, verbose=True):
     """
     Optimize P_c and T_c to match surface boundary conditions
@@ -301,8 +273,8 @@ def optimize_Pc_Tc_4eq(T_surf_target, P_surf_target, M, m_0, comp,
         P_c = 10**log_P_c
         T_c = 10**log_T_c
         
-        r_final, sol = integrate_star_4eq(P_c, T_c, M, m_0, comp,
-                                           use_convection=use_convection, return_full=True)
+        r_final, sol = integrate_star_4eq(P_c, T_c, M, m_0, comp, kappa,
+                                           use_convection, return_full=True)
         
         if sol is None:  # integration failed
             return 1e30
@@ -376,19 +348,13 @@ if __name__ == "__main__":
     m_shells_test = np.logspace(np.log10(m_0), np.log10(M), N_SHELLS)
     m_burn_edge = m_shells_test[N_BURN - 1]
     
-    # Preliminary integration (eps_c guess) to get structure at the burn shells
-    # We use eps_c calculated below to seed L_0 for a realistic initial gradient
-    eps_c_test, _, _ = energy_generation_eps(rho_c_test, T_c_test, comp)
-    L_0_test = eps_c_test * m_0
-    
+    # Preliminary integration (eps=0) to get structure at the burn shells
     r_0_pre = (3 * m_0 / (4 * np.pi * rho_c_test))**(1/3)
-    y0_pre = [np.log(r_0_pre), np.log(P_c_test), L_0_test, np.log(T_c_test)]
+    y0_pre = [np.log(r_0_pre), np.log(P_c_test), 0.0, np.log(T_c_test)]
     def ode_pre_diag(m, y):
-        return stellar_structure_rhs_4eq(m, y, comp, 
-                                          m_shells=np.array([m_0, M]), 
-                                          eps_shells=np.array([0.0, 0.0]),
-                                          use_convection=USE_CONV,
-                                          force_convective_core=True)
+        return stellar_structure_rhs_4eq(m, y, comp, 0.4,
+                                          eps_nuc=0.0,
+                                          use_convection=USE_CONV)
     sol_pre = solve_ivp(ode_pre_diag, [m_0, m_burn_edge], y0_pre, method='RK45',
                         rtol=1e-8, atol=1e-10, dense_output=True)
     
@@ -431,15 +397,13 @@ if __name__ == "__main__":
 
     # 5) Test ODE RHS at initial point + Schwarzschild check
     y0_test = [np.log(r_0_test), np.log(P_c_test), L_0_test, np.log(T_c_test)]
-    rhs_test = stellar_structure_rhs_4eq(m_0, y0_test, comp, 
+    rhs_test = stellar_structure_rhs_4eq(m_0, y0_test, comp, kappa=0.4,
                                           m_shells=m_shells_test,
                                           eps_shells=eps_shells_test,
                                           use_convection=USE_CONV)
     # Compute nabla_rad for diagnostic
-    rho_0 = eos_rho(P_c_test, T_c_test, comp)
-    kappa_0 = kramer_opacity(rho_0, T_c_test, X_SOLAR, Y_SOLAR, Z_SOLAR)
     if m_0 > 0:
-        nabla_rad_0 = (3.0 * kappa_0 * L_0_test * P_c_test) / (16.0 * pi * a_rad * c_light * G * m_0 * T_c_test**4)
+        nabla_rad_0 = (3.0 * 0.4 * L_0_test * P_c_test) / (16.0 * pi * a_rad * c_light * G * m_0 * T_c_test**4)
     else:
         nabla_rad_0 = 0.0
     print(f"[5] ODE RHS at m_0:")
@@ -448,12 +412,12 @@ if __name__ == "__main__":
     print(f"    dL/dm            = {rhs_test[2]:.6e}")
     print(f"    d(ln T)/dm       = {rhs_test[3]:.6e}")
     print(f"    nabla_rad        = {nabla_rad_0:.4f}  (nabla_ad = 0.4)")
-    print(f"    CONVECTIVE       = {nabla_rad_0 > 0.4 or m_0 < 0.001*M_sun}  (Schwarzschild criterion or FORCED)")
+    print(f"    CONVECTIVE       = {nabla_rad_0 > 0.4}  (Schwarzschild criterion)")
 
     # 6) Try a short integration (just 10% of mass)
     print("[6] Test integration to 10% of M ...")
     def ode_test(m, y):
-        return stellar_structure_rhs_4eq(m, y, comp, 
+        return stellar_structure_rhs_4eq(m, y, comp, 0.4,
                                           m_shells=m_shells_test,
                                           eps_shells=eps_shells_test,
                                           use_convection=USE_CONV)
@@ -484,7 +448,7 @@ if __name__ == "__main__":
 
     # 7) Full integration
     print("[7] Full integration to M ...")
-    r_final_diag = integrate_star_4eq(P_c_test, T_c_test, M, m_0, comp, 
+    r_final_diag = integrate_star_4eq(P_c_test, T_c_test, M, m_0, comp, kappa=0.4,
                                        use_convection=USE_CONV,
                                        return_full=False)
     print(f"    R_final          = {r_final_diag:.6e} cm  ({r_final_diag/R_SUN:.4f} R_sun)")
@@ -500,10 +464,11 @@ if __name__ == "__main__":
     # Optimize Pc and Tc to match surface T and P
     Pc_opt, Tc_opt, result = optimize_Pc_Tc_4eq(T_SURF_SUN, P_SURF_SUN, M, m_0, comp,
                                                  P_c_guess=2.5e17, T_c_guess=1.5e7,
+                                                 kappa=0.4,
                                                  use_convection=USE_CONV, verbose=True)
     print(f"\n>>> OPTIMAL: Pc = {Pc_opt:.4e} dyn/cm², Tc = {Tc_opt:.4e} K")
     # Integrate with optimal params
-    r_final, sol = integrate_star_4eq(Pc_opt, Tc_opt, M, m_0, comp, 
+    r_final, sol = integrate_star_4eq(Pc_opt, Tc_opt, M, m_0, comp, kappa=0.4,
                                        use_convection=USE_CONV,
                                        return_full=True)
     m_eval = np.logspace(np.log10(m_0), np.log10(M), 400)
@@ -554,7 +519,7 @@ if __name__ == "__main__":
     
     # Plot vs m/M
     q = m_eval / M  # fractional mass coordinate
-    fig, axes = plt.subplots(3, 2, figsize=(12, 14))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     
     axes[0, 0].plot(q, P_sol)
     axes[0, 0].set_yscale('log')
@@ -576,43 +541,6 @@ if __name__ == "__main__":
     axes[1, 1].set_xlabel('m / M')
     axes[1, 1].set_ylabel('L / L_sun')
     axes[1, 1].set_title('Luminosity')
-
-    # --- Convection vs Radiation Plot ---
-    grad_rad_pts = []
-    grad_ad_pts = []
-    for idx_p in range(len(m_eval)):
-        rho_p = eos_rho(P_sol[idx_p], T_sol[idx_p], comp)
-        kap_p = kramer_opacity(rho_p, T_sol[idx_p], X_SOLAR, Y_SOLAR, Z_SOLAR)
-        try:
-            n_ad_p = ef.nabla_ad(P_sol[idx_p], T_sol[idx_p], mu)
-            n_ad_p = n_ad_p if n_ad_p is not None else 0.4
-        except:
-            n_ad_p = 0.4
-        if m_eval[idx_p] > 0:
-            n_rad_p = (3.0 * kap_p * L_sol[idx_p] * P_sol[idx_p]) / (16.0 * pi * a_rad * c_light * G * m_eval[idx_p] * T_sol[idx_p]**4)
-        else:
-            n_rad_p = 0.0
-        grad_rad_pts.append(n_rad_p)
-        grad_ad_pts.append(n_ad_p)
-    
-    grad_rad_pts = np.array(grad_rad_pts)
-    grad_ad_pts = np.array(grad_ad_pts)
-    
-    axes[2, 0].plot(q, grad_rad_pts, 'r-', label="nabla_rad")
-    axes[2, 0].plot(q, grad_ad_pts, 'b--', label="nabla_ad")
-    axes[2, 0].set_yscale('log')
-    axes[2, 0].set_xlabel('m / M')
-    axes[2, 0].set_ylabel('Gradient Value')
-    axes[2, 0].set_title('Stability Analysis')
-    axes[2, 0].legend()
-    
-    is_conv_zone = (grad_rad_pts > grad_ad_pts).astype(float)
-    axes[2, 1].fill_between(q, 0, is_conv_zone, color='orange', alpha=0.3, label='Convective Zone')
-    axes[2, 1].set_xlabel('m / M')
-    axes[2, 1].set_yticks([0, 1])
-    axes[2, 1].set_yticklabels(['Radiative', 'Convective'])
-    axes[2, 1].set_title('Transport Mode')
-    axes[2, 1].legend()
     
     plt.tight_layout()
     plt.savefig('shooting_method_solution_4eq.png', dpi=150)
