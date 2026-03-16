@@ -114,7 +114,7 @@ def plot_kramer_sun(filename,delRho=100,delT=100, **kwargs):
 
     return
 
-def solar_density(r)
+def solar_density(r):
     '''
     compute density for sun at some radius
     r: float, radius
@@ -147,54 +147,11 @@ def boundary_conditions(R, T, L, X, P, M):
 
     sel = taus >= 2/3
 
-    r = params_0['R']
-    T = params_0['T']
-    L = params_0['L']
-    X = params_0['X']
-    Y = params_0['Y']
-    Z = params_0['Z']
-    mu = params_0['mu']
-    P = params_0['P']
-    M_total = params_0['M_total']
-
-        g: any, surface gravity
-        P: any, pressure
-        T: any, temperature
-        '''
-        return ( g / kramer_opacity(P,T) )
-    
-    Pfit = quad(integrand(g,P,T), 0, kramer_opacity(P,T)*rhos)
-
-    g = ( CONSTANTS['G'] * M_total ) /  r**2
-
-    Teff = (( L ) / (4 * np.pi * CONSTANTS['stefbolt'] * r**2) )**(1/4)
-
-    # Use EOS function to get density
-    rho = ef.simple_eos(P, mu, T)
-
-    # here we will get our taus
-    kmean = kramer_opacity(rho, T, X, Y, Z)
-
-    # Surface pressure approximation (Eddington)
-    # P_surf ~ (2/3) g / kappa
-    P_surf = (2/3) * g / kmean
-    
+    # Eddington surface pressure: P_surf ~ (2/3) g / kappa
+    P_surf = (2.0 / 3.0) * g / kmean
     return P_surf
 
-    filename: string, where to output plots
 
-    '''
-
-    # let's initialize all of our solar variables
-    X = 0.7381
-    Y = 0.2485
-    Z = 0.0134
-    R = 6.957e10
-    L = 3.828e33
-    M = 1.988e33
-
-    rho = solar_density(R)
-    P, T = boundary_conditions(R, T, L, [X, Y,Z], M)
 if __name__ == '__main__':
 
     # here we will create our argument parser
