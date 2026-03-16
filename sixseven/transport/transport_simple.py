@@ -1,6 +1,5 @@
 import numpy as np
 from fipy import Grid1D, CellVariable, FaceVariable, TransientTerm, DiffusionTerm
-from sixseven.transport.diffusion import A_face
 
 print("Hello! This is the transport module. It handles compositional transport via diffusion.")
 # DIFFUSION COEFFICIENTS
