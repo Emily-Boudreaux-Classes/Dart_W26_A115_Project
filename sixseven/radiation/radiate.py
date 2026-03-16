@@ -20,13 +20,33 @@ CONSTANTS = {'G': 6.674e-8}
 
 # opacities
 def kbf(rho, T, X, Y, Z):
-    return (4.34e25) * (1 + X) * Z * rho * (T**(-7/2))
+    # Bound-free (Kramers): assumes ionized gas, invalid below ~10^4 K
+    if T < 1e4:
+        return 0.0
+    return (4.34e23) * (1 + X) * Z * rho * (T**(-7/2))
 def kff(rho, T, X, Y, Z):
+    # Free-free (Kramers): assumes ionized gas, invalid below ~10^4 K
+    if T < 1e4:
+        return 0.0
     return (3.68e22) * (1 - Z) * (1 + X) * rho * (T**(-7/2))
 def kts(rho, T, X, Y, Z):
+    # Electron scattering (Thomson)
     return 0.2 * (1 + X)
 def khion(rho, T, X, Y, Z):
-    return (1.1e-25) * (Z**(1/2)) * (rho**(1/2)) * (T**(-7/2))
+    # H⁻ bound-free opacity: dominant in cool stellar envelopes (T ~ 3000-10000 K)
+    # Fitting formula from Hansen, Kawaler & Trimble (2004): κ ∝ Z ρ^{1/2} T^9
+    # H⁻ is destroyed by ionization above ~1.6e4 K
+    if np.ndim(T) == 0:
+        if T > 1.6e4:
+            return 0.0
+        return 2.5e-31 * (Z / 0.02) * rho**0.5 * T**9
+    # array path
+    T_arr = np.asarray(T, dtype=float)
+    rho_arr = np.asarray(rho, dtype=float)
+    result = np.where(T_arr < 1.6e4,
+                      2.5e-31 * (Z / 0.02) * rho_arr**0.5 * T_arr**9,
+                      0.0)
+    return result
 
 
 def kramer_opacity(rho, T, X, Y, Z):
@@ -38,17 +58,20 @@ def kramer_opacity(rho, T, X, Y, Z):
 
     '''
 
-    # compute the three opacities
-    bf = kbf(rho,T,X,Y,Z)
-    ff = kff(rho,T,X,Y,Z)
-    ts = kts(rho,T,X,Y,Z)
-    hion = khion(rho,T,X,Y,Z)
+    # compute all opacity sources and sum (Rosseland mean approximation)
+    bf   = kbf(rho, T, X, Y, Z)
+    ff   = kff(rho, T, X, Y, Z)
+    ts   = kts(rho, T, X, Y, Z)   # electron scattering floor
+    hion = khion(rho, T, X, Y, Z)
 
-    # sum all opacity sources together and average
-    avg = (bf + ff + ts + hion) / 4
+    # Rosseland mean: sum contributions; electron scattering sets the floor
+    total = bf + ff + ts + hion
 
+    # Cap at 300 cm^2/g to prevent divergence at cool/dense surfaces
+    # (Kramers formulas break down below ~10^4 K; electron scattering dominates in the deep interior)
+    total = float(np.clip(total, ts, 300.0))
 
-    return avg
+    return total
 
 def plot_kramer_sun(filename,delRho=100,delT=100, **kwargs):
     '''
@@ -103,19 +126,29 @@ def Pfit(params_0):
     T = params_0['T']
     L = params_0['L']
     X = params_0['X']
+    Y = params_0['Y']
+    Z = params_0['Z']
+    mu = params_0['mu']
     P = params_0['P']
-    dm = params_0['dm']
+    M_total = params_0['M_total']
 
     # calculate Pfit
 
-    g = ( CONSTANTS['G'] * dm[-1]**2 ) /  r**2
+    g = ( CONSTANTS['G'] * M_total ) /  r**2
 
-    Teff = (( L ) / (4 * np.pi * CONSTANTS['stefbolt'] * R**2) )**(1/4)
+    Teff = (( L ) / (4 * np.pi * CONSTANTS['stefbolt'] * r**2) )**(1/4)
 
+    # Use EOS function to get density
+    rho = ef.simple_eos(P, mu, T)
 
     # here we will get our taus
-    X,Y,Z = 
-    kmean = kramer_opacity(rho,T,)    
+    kmean = kramer_opacity(rho, T, X, Y, Z)
+
+    # Surface pressure approximation (Eddington)
+    # P_surf ~ (2/3) g / kappa
+    P_surf = (2/3) * g / kmean
+    
+    return P_surf
 
 
 
